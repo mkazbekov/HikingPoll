@@ -13,23 +13,37 @@ interface Backend {
   query<T = Row>(text: string, params?: Params): Promise<T[]>;
 }
 
-const useNeon = !!process.env.DATABASE_URL;
+// Vercel's Neon integration doesn't always name the variable DATABASE_URL — it may
+// add POSTGRES_URL / *_UNPOOLED instead. Accept whichever is present.
+const CONNECTION_STRING =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.DATABASE_URL_UNPOOLED ||
+  process.env.POSTGRES_URL_NON_POOLING ||
+  process.env.POSTGRES_PRISMA_URL ||
+  "";
+
+const useNeon = !!CONNECTION_STRING;
 
 let backendPromise: Promise<Backend> | null = null;
 
 async function createBackend(): Promise<Backend> {
   if (useNeon) {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(process.env.DATABASE_URL as string);
+    const sql = neon(CONNECTION_STRING);
     // `.query(text, params)` (unsafe/parameterized form) exists at runtime but is
     // not surfaced on the tagged-template type, so we reach it through a cast.
     const runner = sql as unknown as {
-      query: (text: string, params: unknown[]) => Promise<Row[]>;
+      query: (text: string, params: unknown[]) => Promise<unknown>;
     };
     return {
       async query<T = Row>(text: string, params: Params = []): Promise<T[]> {
-        const rows = (await runner.query(text, params)) as unknown as T[];
-        return rows;
+        // Depending on driver options, .query() returns either the rows array
+        // directly or a pg-style { rows } result. Handle both.
+        const result = await runner.query(text, params);
+        if (Array.isArray(result)) return result as T[];
+        const rows = (result as { rows?: unknown[] } | null)?.rows;
+        return (rows ?? []) as T[];
       },
     };
   }
