@@ -8,6 +8,11 @@ export const dynamic = "force-dynamic";
 // env vars are PRESENT (never their values) and the DB error text if any.
 export async function GET() {
   const present = (name: string) => !!process.env[name];
+  // Names only (never values) of any env var that looks database-related, so we can
+  // see exactly what Vercel injected — including unexpected names.
+  const dbRelatedEnvNames = Object.keys(process.env)
+    .filter((n) => /(DATABASE|POSTGRES|NEON|PG|SQL|DB_)/i.test(n))
+    .sort();
   const info = {
     connectionVarPresent: {
       DATABASE_URL: present("DATABASE_URL"),
@@ -16,6 +21,8 @@ export async function GET() {
       POSTGRES_URL_NON_POOLING: present("POSTGRES_URL_NON_POOLING"),
       POSTGRES_PRISMA_URL: present("POSTGRES_PRISMA_URL"),
     },
+    dbRelatedEnvNames,
+    vercelEnv: process.env.VERCEL_ENV ?? null,
     adminPasswordSet: present("ADMIN_PASSWORD"),
     db: "unknown" as string,
   };
