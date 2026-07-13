@@ -29,21 +29,16 @@ let backendPromise: Promise<Backend> | null = null;
 
 async function createBackend(): Promise<Backend> {
   if (useNeon) {
-    const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(CONNECTION_STRING);
-    // `.query(text, params)` (unsafe/parameterized form) exists at runtime but is
-    // not surfaced on the tagged-template type, so we reach it through a cast.
-    const runner = sql as unknown as {
-      query: (text: string, params: unknown[]) => Promise<unknown>;
-    };
+    // Use the pg-compatible Pool (accepts $1 placeholders + a params array and
+    // returns { rows }). `poolQueryViaFetch` routes single, non-transaction queries
+    // over HTTP so no WebSocket implementation is required in the serverless runtime.
+    const { Pool, neonConfig } = await import("@neondatabase/serverless");
+    neonConfig.poolQueryViaFetch = true;
+    const pool = new Pool({ connectionString: CONNECTION_STRING });
     return {
       async query<T = Row>(text: string, params: Params = []): Promise<T[]> {
-        // Depending on driver options, .query() returns either the rows array
-        // directly or a pg-style { rows } result. Handle both.
-        const result = await runner.query(text, params);
-        if (Array.isArray(result)) return result as T[];
-        const rows = (result as { rows?: unknown[] } | null)?.rows;
-        return (rows ?? []) as T[];
+        const result = await pool.query(text, params as unknown[]);
+        return result.rows as T[];
       },
     };
   }
