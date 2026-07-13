@@ -1,0 +1,239 @@
+@import "tailwindcss";
+
+/* ── Outdoors design tokens ────────────────────────────────────────────────────
+   Pine-green primary, sky-blue secondary, trail-amber accent. Semantic CSS
+   variables drive everything so light/dark stay in sync. */
+
+:root {
+  --bg: #f5f8f2;
+  --bg-tint: #eef4ea;
+  --surface: #ffffff;
+  --surface-2: #f3f7ef;
+  --fg: #16231b;
+  --fg-muted: #4e6152;
+  --fg-subtle: #6f8474;
+  --border: #dbe6d6;
+  --border-strong: #c4d5bd;
+
+  --primary: #2f6b3e;
+  --primary-hover: #285d36;
+  --primary-soft: #e3efe1;
+  --on-primary: #ffffff;
+
+  --secondary: #2563eb;
+  --secondary-soft: #e5edfd;
+
+  --accent: #c2691a;
+  --accent-soft: #f7ead6;
+
+  --danger: #c0392b;
+  --danger-hover: #a5301f;
+  --danger-soft: #fbe6e2;
+
+  --ring: #2f6b3e;
+
+  /* Heatmap intensity ramp (low → high availability). Colorblind-safe: paired
+     with numeric labels, not color alone. */
+  --heat-0: #eef2ec;
+  --heat-1: #d6ecd2;
+  --heat-2: #a9d9a3;
+  --heat-3: #79c377;
+  --heat-4: #47a457;
+  --heat-5: #2f6b3e;
+
+  --shadow-sm: 0 1px 2px rgba(22, 35, 27, 0.06);
+  --shadow-md: 0 4px 16px rgba(22, 35, 27, 0.08);
+  --shadow-lg: 0 12px 32px rgba(22, 35, 27, 0.12);
+}
+
+.dark,
+:root[data-theme="dark"] {
+  --bg: #0e140f;
+  --bg-tint: #121a14;
+  --surface: #16211a;
+  --surface-2: #1b281f;
+  --fg: #e8f0ea;
+  --fg-muted: #a3b6a8;
+  --fg-subtle: #7e9384;
+  --border: #26332a;
+  --border-strong: #33443768;
+
+  --primary: #57b06b;
+  --primary-hover: #66bd79;
+  --primary-soft: #1e3325;
+  --on-primary: #08130b;
+
+  --secondary: #6ea3ff;
+  --secondary-soft: #1a2740;
+
+  --accent: #e0954a;
+  --accent-soft: #33230f;
+
+  --danger: #e8695a;
+  --danger-hover: #ef7e70;
+  --danger-soft: #35201c;
+
+  --ring: #57b06b;
+
+  --heat-0: #1a241d;
+  --heat-1: #234032;
+  --heat-2: #2f6144;
+  --heat-3: #3f8a58;
+  --heat-4: #52b06c;
+  --heat-5: #7fd394;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e140f;
+    --bg-tint: #121a14;
+    --surface: #16211a;
+    --surface-2: #1b281f;
+    --fg: #e8f0ea;
+    --fg-muted: #a3b6a8;
+    --fg-subtle: #7e9384;
+    --border: #26332a;
+    --border-strong: #33443768;
+    --primary: #57b06b;
+    --primary-hover: #66bd79;
+    --primary-soft: #1e3325;
+    --on-primary: #08130b;
+    --secondary: #6ea3ff;
+    --secondary-soft: #1a2740;
+    --accent: #e0954a;
+    --accent-soft: #33230f;
+    --danger: #e8695a;
+    --danger-hover: #ef7e70;
+    --danger-soft: #35201c;
+    --ring: #57b06b;
+    --heat-0: #1a241d;
+    --heat-1: #234032;
+    --heat-2: #2f6144;
+    --heat-3: #3f8a58;
+    --heat-4: #52b06c;
+    --heat-5: #7fd394;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-tint: var(--bg-tint);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-soft: var(--primary-soft);
+  --color-on-primary: var(--on-primary);
+  --color-secondary: var(--secondary);
+  --color-secondary-soft: var(--secondary-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-soft: var(--danger-soft);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+/* Subtle outdoors backdrop: layered hill gradients behind everything. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(120% 60% at 50% -10%, var(--bg-tint) 0%, transparent 60%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg) 100%);
+  pointer-events: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Tabular figures for all counts/times so grids don't jitter. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Slim, themed scrollbars for the week grid. */
+.thin-scroll::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes hp-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-in {
+  animation: hp-fade-in 0.24s ease-out both;
+}
+
+@keyframes hp-toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Prevent text selection while dragging on the availability grid. */
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
