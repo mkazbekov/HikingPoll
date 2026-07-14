@@ -3,13 +3,12 @@
 import { useMemo } from "react";
 import type { EventSettings } from "@/lib/types";
 import { dateKey, monthName, parseDateKey } from "@/lib/slots";
-import { heatVar } from "@/lib/heat";
+import { cn } from "./ui";
 
 interface Props {
   event: EventSettings;
-  /** dateKey -> how many participants are free at some point that day. */
-  dayAvailability: Map<string, number>;
-  maxParticipants: number;
+  /** dateKey -> how many slots YOU have selected that day (own response only). */
+  myDayCounts: Map<string, number>;
   onSelectDay: (dateKey: string) => void;
   activeDates: Set<string>;
 }
@@ -58,84 +57,74 @@ function buildMonths(startKey: string, endKey: string): { year: number; month: n
   return months;
 }
 
-export function MonthGrid({
-  event,
-  dayAvailability,
-  maxParticipants,
-  onSelectDay,
-  activeDates,
-}: Props) {
+/**
+ * Month overview of YOUR OWN selection. Days you've marked get a green tint
+ * and a dot; tap any day to jump to that week and edit the exact times.
+ */
+export function MonthGrid({ event, myDayCounts, onSelectDay, activeDates }: Props) {
   const months = useMemo(
     () => buildMonths(event.dateStart, event.dateEnd),
     [event.dateStart, event.dateEnd],
   );
 
   return (
-    <div className="grid gap-6 sm:grid-cols-2">
-      {months.map((m) => (
-        <div key={`${m.year}-${m.month}`}>
-          <h3 className="mb-2 px-1 text-sm font-semibold text-[var(--fg)]">
-            {monthName(m.month)} {m.year}
-          </h3>
-          <div className="grid grid-cols-7 gap-1">
-            {WEEKDAY_HEADERS.map((h, i) => (
-              <div
-                key={i}
-                className="pb-1 text-center text-[10px] font-medium uppercase text-[var(--fg-subtle)]"
-              >
-                {h}
-              </div>
-            ))}
-            {m.cells.map((cell) => {
-              if (!cell.inMonth) return <div key={cell.key} />;
-              const count = dayAvailability.get(cell.key) ?? 0;
-              const clickable = cell.inRange;
-              const active = activeDates.has(cell.key);
-              const bg =
-                clickable && count > 0
-                  ? heatVar(count, maxParticipants)
-                  : "transparent";
-              return (
-                <button
-                  key={cell.key}
-                  type="button"
-                  disabled={!clickable}
-                  onClick={() => onSelectDay(cell.key)}
-                  aria-label={`${cell.key}, ${count} available${active ? ", current week" : ""}`}
-                  title={clickable ? `${count} available` : undefined}
-                  className={[
-                    "relative flex aspect-square items-center justify-center rounded-lg text-sm font-medium transition-all",
-                    clickable
-                      ? "text-[var(--fg)] hover:ring-2 hover:ring-[var(--primary)]"
-                      : "cursor-default text-[var(--fg-subtle)] opacity-40",
-                    active ? "ring-2 ring-[var(--secondary)]" : "",
-                  ].join(" ")}
-                  style={{ backgroundColor: bg }}
+    <div>
+      <div className="grid gap-6 sm:grid-cols-2">
+        {months.map((m) => (
+          <div key={`${m.year}-${m.month}`}>
+            <h3 className="mb-2 px-1 text-sm font-semibold text-[var(--fg)]">
+              {monthName(m.month)} {m.year}
+            </h3>
+            <div className="grid grid-cols-7 gap-1">
+              {WEEKDAY_HEADERS.map((h, i) => (
+                <div
+                  key={i}
+                  className="pb-1 text-center text-[10px] font-medium uppercase text-[var(--fg-subtle)]"
                 >
-                  <span
-                    className="tnum relative z-10"
-                    style={{
-                      color:
-                        count > 0 && count / maxParticipants > 0.55
-                          ? "var(--on-primary)"
-                          : undefined,
-                    }}
+                  {h}
+                </div>
+              ))}
+              {m.cells.map((cell) => {
+                if (!cell.inMonth) return <div key={cell.key} />;
+                const count = myDayCounts.get(cell.key) ?? 0;
+                const clickable = cell.inRange;
+                const active = activeDates.has(cell.key);
+                const marked = clickable && count > 0;
+                return (
+                  <button
+                    key={cell.key}
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => onSelectDay(cell.key)}
+                    aria-label={`${cell.key}${marked ? `, you marked ${count} time${count === 1 ? "" : "s"}` : ""}${active ? ", current week" : ""}`}
+                    title={marked ? `You marked ${count} time${count === 1 ? "" : "s"} — tap to edit` : clickable ? "Tap to pick times this day" : undefined}
+                    className={cn(
+                      "relative flex aspect-square items-center justify-center rounded-lg text-sm font-medium transition-all duration-150",
+                      clickable
+                        ? "text-[var(--fg)] hover:ring-2 hover:ring-[var(--primary)]"
+                        : "cursor-default text-[var(--fg-subtle)] opacity-40",
+                      marked && "bg-[var(--primary-soft)] font-semibold text-[var(--primary)]",
+                      active && "ring-1 ring-[var(--border-strong)]",
+                    )}
                   >
-                    {cell.date.getDate()}
-                  </span>
-                  {count > 0 && (
-                    <span className="absolute bottom-1 right-1 z-10 text-[9px] font-semibold text-[var(--primary)]"
-                      style={{ color: count / maxParticipants > 0.55 ? "var(--on-primary)" : "var(--primary)" }}
-                    >
-                      {count}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                    <span className="tnum relative z-10">{cell.date.getDate()}</span>
+                    {marked && (
+                      <span
+                        className="absolute bottom-1 left-1/2 size-1.5 -translate-x-1/2 rounded-full bg-[var(--primary)]"
+                        aria-hidden
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
+      <p className="mt-4 text-xs text-[var(--fg-subtle)]">
+        Days with a green dot are ones you&apos;ve marked. Tap any day to jump to that
+        week and fine-tune your times.
+      </p>
     </div>
   );
 }

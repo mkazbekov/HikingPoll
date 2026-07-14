@@ -12,10 +12,42 @@ import type {
   TransportMode,
 } from "./types";
 
-const VALID_MODES: TransportMode[] = ["CAR", "TRANSIT", "NEEDS_RIDE"];
+const VALID_MODES: TransportMode[] = ["CAR", "TRANSIT", "NEEDS_RIDE", "OTHER"];
 
 export function normalizeName(name: string): string {
   return name.trim().replace(/\s+/g, " ");
+}
+
+/** Parse the transport_modes JSON column, falling back to the legacy single column. */
+function parseModes(raw: unknown, legacy: unknown): TransportMode[] {
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        const modes = arr.filter((m): m is TransportMode =>
+          VALID_MODES.includes(m as TransportMode),
+        );
+        if (modes.length) return modes;
+      }
+    } catch {}
+  }
+  const single = String(legacy ?? "");
+  return VALID_MODES.includes(single as TransportMode)
+    ? [single as TransportMode]
+    : ["CAR"];
+}
+
+/** Sanitize a client-supplied mode list: valid, unique, car/needs-ride not combined. */
+function cleanModes(input: unknown): TransportMode[] {
+  const arr = Array.isArray(input) ? input : [];
+  const modes = Array.from(
+    new Set(arr.filter((m): m is TransportMode => VALID_MODES.includes(m as TransportMode))),
+  );
+  // Driving your own car and needing a ride contradict each other; keep the car.
+  if (modes.includes("CAR") && modes.includes("NEEDS_RIDE")) {
+    return modes.filter((m) => m !== "NEEDS_RIDE");
+  }
+  return modes.length ? modes : ["CAR"];
 }
 
 function nameKey(name: string): string {
@@ -61,7 +93,7 @@ export async function getDestinations(): Promise<Destination[]> {
 
 export async function getPickups(): Promise<PickupPoint[]> {
   const rows = await query<Record<string, unknown>>(
-    `SELECT id, name, description, sort_order FROM pickup_points
+    `SELECT id, name, description, sort_order, suggested_by FROM pickup_points
      ORDER BY sort_order ASC, id ASC`,
   );
   return rows.map((r) => ({
@@ -69,12 +101,14 @@ export async function getPickups(): Promise<PickupPoint[]> {
     name: String(r.name),
     description: String(r.description ?? ""),
     sortOrder: Number(r.sort_order ?? 0),
+    suggestedBy: r.suggested_by ? String(r.suggested_by) : null,
   }));
 }
 
 export async function getParticipants(): Promise<Participant[]> {
   const rows = await query<Record<string, unknown>>(
-    `SELECT id, name, transport_mode, passenger_seats, destination_id, pickup_point_id
+    `SELECT id, name, transport_mode, transport_modes, transport_other,
+            passenger_seats, destination_id, pickup_point_id
      FROM participants ORDER BY created_at ASC, id ASC`,
   );
   const slotRows = await query<Record<string, unknown>>(
@@ -89,7 +123,8 @@ export async function getParticipants(): Promise<Participant[]> {
   return rows.map((r) => ({
     id: Number(r.id),
     name: String(r.name),
-    transportMode: String(r.transport_mode) as TransportMode,
+    transportModes: parseModes(r.transport_modes, r.transport_mode),
+    transportOther: r.transport_other ? String(r.transport_other) : null,
     passengerSeats: r.passenger_seats === null ? null : Number(r.passenger_seats),
     destinationId: r.destination_id === null ? null : Number(r.destination_id),
     pickupPointId: r.pickup_point_id === null ? null : Number(r.pickup_point_id),
@@ -112,7 +147,8 @@ export async function getParticipantByName(
 ): Promise<Participant | null> {
   const key = nameKey(name);
   const row = await queryOne<Record<string, unknown>>(
-    `SELECT id, name, transport_mode, passenger_seats, destination_id, pickup_point_id
+    `SELECT id, name, transport_mode, transport_modes, transport_other,
+            passenger_seats, destination_id, pickup_point_id
      FROM participants WHERE name_key = $1`,
     [key],
   );
@@ -125,7 +161,8 @@ export async function getParticipantByName(
   return {
     id,
     name: String(row.name),
-    transportMode: String(row.transport_mode) as TransportMode,
+    transportModes: parseModes(row.transport_modes, row.transport_mode),
+    transportOther: row.transport_other ? String(row.transport_other) : null,
     passengerSeats: row.passenger_seats === null ? null : Number(row.passenger_seats),
     destinationId: row.destination_id === null ? null : Number(row.destination_id),
     pickupPointId: row.pickup_point_id === null ? null : Number(row.pickup_point_id),
@@ -138,13 +175,17 @@ export async function upsertResponse(input: ResponseInput): Promise<Participant>
   const name = normalizeName(input.name);
   if (!name) throw new Error("Name is required");
   const key = nameKey(name);
-  const mode: TransportMode = VALID_MODES.includes(input.transportMode)
-    ? input.transportMode
-    : "CAR";
+  const modes = cleanModes(input.transportModes);
+  const other =
+    modes.includes("OTHER") && input.transportOther
+      ? String(input.transportOther).trim().slice(0, 120) || null
+      : null;
   const seats =
-    mode === "CAR" && input.passengerSeats != null && input.passengerSeats >= 0
+    modes.includes("CAR") && input.passengerSeats != null && input.passengerSeats >= 0
       ? Math.min(20, Math.floor(input.passengerSeats))
       : null;
+  const modesJson = JSON.stringify(modes);
+  const legacyMode = modes[0]; // keep the old single-value column coherent
 
   const existing = await queryOne<{ id: number }>(
     `SELECT id FROM participants WHERE name_key = $1`,
@@ -156,10 +197,10 @@ export async function upsertResponse(input: ResponseInput): Promise<Participant>
     participantId = Number(existing.id);
     await query(
       `UPDATE participants
-       SET name = $1, transport_mode = $2, passenger_seats = $3,
-           destination_id = $4, pickup_point_id = $5, updated_at = now()
-       WHERE id = $6`,
-      [name, mode, seats, input.destinationId, input.pickupPointId, participantId],
+       SET name = $1, transport_mode = $2, transport_modes = $3, transport_other = $4,
+           passenger_seats = $5, destination_id = $6, pickup_point_id = $7, updated_at = now()
+       WHERE id = $8`,
+      [name, legacyMode, modesJson, other, seats, input.destinationId, input.pickupPointId, participantId],
     );
     await query(`DELETE FROM availability_slots WHERE participant_id = $1`, [
       participantId,
@@ -167,16 +208,26 @@ export async function upsertResponse(input: ResponseInput): Promise<Participant>
   } else {
     const inserted = await queryOne<{ id: number }>(
       `INSERT INTO participants
-         (name, name_key, transport_mode, passenger_seats, destination_id, pickup_point_id)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-      [name, key, mode, seats, input.destinationId, input.pickupPointId],
+         (name, name_key, transport_mode, transport_modes, transport_other,
+          passenger_seats, destination_id, pickup_point_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [name, key, legacyMode, modesJson, other, seats, input.destinationId, input.pickupPointId],
     );
     participantId = Number(inserted!.id);
   }
 
-  // Insert the (validated, de-duplicated) slots.
+  // Insert the (validated, de-duplicated) slots. Minutes must land on the
+  // event's slot boundaries (e.g. :00/:30 for 30-minute slots).
+  const event = await getEvent();
   const uniqueSlots = Array.from(
-    new Set(input.slots.filter((s) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s))),
+    new Set(
+      input.slots.filter(
+        (s) =>
+          typeof s === "string" &&
+          /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(s) &&
+          Number(s.slice(14)) % event.slotMinutes === 0,
+      ),
+    ),
   );
   for (const slot of uniqueSlots) {
     await query(
@@ -198,6 +249,16 @@ export async function suggestDestination(
 ): Promise<Destination> {
   const clean = name.trim();
   if (!clean) throw new Error("Destination name is required");
+  // Same name already listed? Select it rather than creating a duplicate.
+  const dup = await queryOne<{ id: number }>(
+    `SELECT id FROM destinations WHERE lower(name) = lower($1)`,
+    [clean],
+  );
+  if (dup) {
+    const all = await getDestinations();
+    const found = all.find((d) => d.id === Number(dup.id));
+    if (found) return found;
+  }
   const inserted = await queryOne<{ id: number }>(
     `INSERT INTO destinations (name, description, is_suggested, suggested_by)
      VALUES ($1, $2, false, $3) RETURNING id`,
@@ -209,6 +270,43 @@ export async function suggestDestination(
   return found;
 }
 
+/** A participant proposes a new pickup / meeting point everyone can then select. */
+export async function suggestPickup(
+  name: string,
+  description: string,
+  suggestedBy: string | null,
+): Promise<PickupPoint> {
+  const clean = name.trim();
+  if (!clean) throw new Error("Pickup point name is required");
+  // Same name already listed? Select it rather than creating a duplicate.
+  const dup = await queryOne<{ id: number }>(
+    `SELECT id FROM pickup_points WHERE lower(name) = lower($1)`,
+    [clean],
+  );
+  if (dup) {
+    const all = await getPickups();
+    const found = all.find((p) => p.id === Number(dup.id));
+    if (found) return found;
+  }
+  const maxRow = await queryOne<{ max: number }>(
+    `SELECT COALESCE(MAX(sort_order), 0)::int AS max FROM pickup_points`,
+  );
+  const inserted = await queryOne<{ id: number }>(
+    `INSERT INTO pickup_points (name, description, sort_order, suggested_by)
+     VALUES ($1, $2, $3, $4) RETURNING id`,
+    [
+      clean,
+      description.trim(),
+      Number(maxRow?.max ?? 0) + 1,
+      suggestedBy ? normalizeName(suggestedBy) : null,
+    ],
+  );
+  const all = await getPickups();
+  const found = all.find((p) => p.id === Number(inserted!.id));
+  if (!found) throw new Error("Failed to add pickup point");
+  return found;
+}
+
 // ── Admin mutations ─────────────────────────────────────────────────────────────
 
 export async function deleteParticipant(id: number): Promise<void> {
@@ -217,7 +315,7 @@ export async function deleteParticipant(id: number): Promise<void> {
 
 export async function updateParticipantMeta(
   id: number,
-  fields: Partial<Pick<Participant, "name" | "transportMode" | "passengerSeats" | "destinationId" | "pickupPointId">>,
+  fields: Partial<Pick<Participant, "name" | "transportModes" | "transportOther" | "passengerSeats" | "destinationId" | "pickupPointId">>,
 ): Promise<void> {
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -227,9 +325,14 @@ export async function updateParticipantMeta(
     sets.push(`name = $${i++}`, `name_key = $${i++}`);
     params.push(n, n.toLowerCase());
   }
-  if (fields.transportMode !== undefined) {
-    sets.push(`transport_mode = $${i++}`);
-    params.push(fields.transportMode);
+  if (fields.transportModes !== undefined) {
+    const modes = cleanModes(fields.transportModes);
+    sets.push(`transport_modes = $${i++}`, `transport_mode = $${i++}`);
+    params.push(JSON.stringify(modes), modes[0]);
+  }
+  if (fields.transportOther !== undefined) {
+    sets.push(`transport_other = $${i++}`);
+    params.push(fields.transportOther ? String(fields.transportOther).trim().slice(0, 120) : null);
   }
   if (fields.passengerSeats !== undefined) {
     sets.push(`passenger_seats = $${i++}`);

@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS events (
   date_end       TEXT NOT NULL,
   day_start_hour INTEGER NOT NULL DEFAULT 6,
   day_end_hour   INTEGER NOT NULL DEFAULT 20,
-  slot_minutes   INTEGER NOT NULL DEFAULT 15,
+  slot_minutes   INTEGER NOT NULL DEFAULT 30,
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -137,9 +137,25 @@ CREATE INDEX IF NOT EXISTS idx_slots_participant ON availability_slots(participa
 CREATE INDEX IF NOT EXISTS idx_slots_start ON availability_slots(slot_start);
 `;
 
+// Idempotent upgrades for databases created by earlier versions of the app:
+//   • participants gain multi-select transport (JSON array) + free-text "other".
+//   • pickup_points gain suggested_by so participants can propose meeting points.
+//   • slots move from 15-minute to 30-minute granularity: :15/:45 snap down to
+//     :00/:30 (dropping ones that would collide with an existing slot).
+const MIGRATIONS = `
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS transport_modes TEXT;
+ALTER TABLE participants ADD COLUMN IF NOT EXISTS transport_other TEXT;
+ALTER TABLE pickup_points ADD COLUMN IF NOT EXISTS suggested_by TEXT;
+UPDATE participants SET transport_modes = '["' || transport_mode || '"]' WHERE transport_modes IS NULL;
+UPDATE events SET slot_minutes = 30 WHERE slot_minutes = 15;
+DELETE FROM availability_slots WHERE substring(slot_start from 15 for 2) IN ('15','45') AND EXISTS (SELECT 1 FROM availability_slots t WHERE t.participant_id = availability_slots.participant_id AND t.slot_start = substring(availability_slots.slot_start from 1 for 14) || CASE WHEN substring(availability_slots.slot_start from 15 for 2) = '15' THEN '00' ELSE '30' END);
+UPDATE availability_slots SET slot_start = substring(slot_start from 1 for 14) || CASE WHEN substring(slot_start from 15 for 2) = '15' THEN '00' ELSE '30' END WHERE substring(slot_start from 15 for 2) IN ('15','45');
+`;
+
 async function ensureSchema(backend: Backend): Promise<void> {
   // Split on ';' so PGlite (which runs one statement per query) is happy too.
-  const statements = SCHEMA.split(";")
+  const statements = (SCHEMA + MIGRATIONS)
+    .split(";")
     .map((s) => s.trim())
     .filter(Boolean);
   for (const stmt of statements) {
@@ -179,7 +195,7 @@ async function ensureSeed(backend: Backend): Promise<void> {
       end,
       6,
       20,
-      15,
+      30,
     ],
   );
 

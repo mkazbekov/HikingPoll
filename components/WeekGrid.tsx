@@ -3,26 +3,26 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EventSettings } from "@/lib/types";
 import { parseDateKey, timeRows, weekdayShort, monthShort, pad } from "@/lib/slots";
-import { heatVar } from "@/lib/heat";
 
 interface Props {
   dates: string[]; // date keys visible in this week
   event: EventSettings;
   selected: Set<string>;
   onChange: (next: Set<string>) => void;
-  /** slotKey -> number of OTHER participants free then (for faint context shading). */
-  groupCounts: Map<string, number>;
-  maxCount: number;
   disabled?: boolean;
 }
 
+/**
+ * The personal availability editor. Deliberately shows ONLY the current
+ * person's selection — everyone's combined availability lives in the public
+ * heatmap ("Group results") so a new participant always starts from a blank
+ * grid.
+ */
 export function WeekGrid({
   dates,
   event,
   selected,
   onChange,
-  groupCounts,
-  maxCount,
   disabled = false,
 }: Props) {
   const rows = useMemo(
@@ -88,14 +88,14 @@ export function WeekGrid({
     if (key) applyTo(key);
   };
 
-  const colWidth = "minmax(46px, 1fr)";
+  const colWidth = "minmax(52px, 1fr)";
 
   return (
-    <div className="overflow-x-auto thin-scroll" style={{ touchAction: "pan-y pan-x" }}>
+    <div className="thin-scroll overflow-x-auto" style={{ touchAction: "pan-y pan-x" }}>
       <div
         className={disabled ? "no-select opacity-60" : "no-select"}
         onPointerMove={onPointerMove}
-        style={{ minWidth: dates.length > 4 ? `${64 + dates.length * 46}px` : undefined }}
+        style={{ minWidth: dates.length > 4 ? `${64 + dates.length * 52}px` : undefined }}
       >
         {/* Day header */}
         <div
@@ -131,7 +131,11 @@ export function WeekGrid({
               style={{ gridTemplateColumns: `64px repeat(${dates.length}, ${colWidth})` }}
             >
               <div
-                className="relative -translate-y-2 pr-2 text-right text-[11px] tabular-nums text-[var(--fg-subtle)]"
+                className={
+                  ri === 0
+                    ? "relative pr-2 text-right text-[11px] tabular-nums text-[var(--fg-subtle)]"
+                    : "relative -translate-y-2 pr-2 text-right text-[11px] tabular-nums text-[var(--fg-subtle)]"
+                }
                 style={{ touchAction: "pan-y" }}
               >
                 {isHourStart ? row.label : ""}
@@ -139,12 +143,6 @@ export function WeekGrid({
               {dates.map((d) => {
                 const key = `${d}T${row.key}`;
                 const mine = local.has(key);
-                const others = groupCounts.get(key) ?? 0;
-                const bg = mine
-                  ? "var(--primary)"
-                  : others > 0
-                    ? heatVar(others, maxCount)
-                    : "var(--surface)";
                 return (
                   <button
                     key={key}
@@ -154,9 +152,9 @@ export function WeekGrid({
                     aria-label={`${weekdayShort(parseDateKey(d))} ${d} ${row.label}${mine ? " — selected" : ""}`}
                     onPointerDown={(e) => onPointerDown(e, key)}
                     tabIndex={-1}
-                    className="h-[22px] border-l border-[var(--border)] transition-colors"
+                    className="h-[30px] border-l border-[var(--border)] transition-colors duration-100 hover:bg-[var(--primary-soft)]"
                     style={{
-                      backgroundColor: bg,
+                      backgroundColor: mine ? "var(--primary)" : undefined,
                       borderTop: isHourStart
                         ? "1px solid var(--border-strong)"
                         : ri === 0

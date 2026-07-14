@@ -32,14 +32,19 @@
 
   --ring: #2f6b3e;
 
-  /* Heatmap intensity ramp (low → high availability). Colorblind-safe: paired
-     with numeric labels, not color alone. */
+  /* Heatmap ramp: none / few / half / most / everyone. Sequential yellow→green
+     (ColorBrewer YlGn) — lightness falls monotonically, so the order survives
+     all common color-vision deficiencies. Cells also carry a number. */
   --heat-0: #eef2ec;
-  --heat-1: #d6ecd2;
-  --heat-2: #a9d9a3;
-  --heat-3: #79c377;
-  --heat-4: #47a457;
-  --heat-5: #2f6b3e;
+  --heat-1: #d9f0a3;
+  --heat-2: #78c679;
+  --heat-3: #238443;
+  --heat-4: #006837;
+  --heat-text-0: #6f8474;
+  --heat-text-1: #33421d;
+  --heat-text-2: #12301a;
+  --heat-text-3: #ffffff;
+  --heat-text-4: #ffffff;
 
   --shadow-sm: 0 1px 2px rgba(22, 35, 27, 0.06);
   --shadow-md: 0 4px 16px rgba(22, 35, 27, 0.08);
@@ -75,12 +80,17 @@
 
   --ring: #57b06b;
 
-  --heat-0: #1a241d;
-  --heat-1: #234032;
-  --heat-2: #2f6144;
-  --heat-3: #3f8a58;
-  --heat-4: #52b06c;
-  --heat-5: #7fd394;
+  /* Dark ramp: brightness rises with availability so "everyone" pops. */
+  --heat-0: #1c2620;
+  --heat-1: #33512e;
+  --heat-2: #4d8a4f;
+  --heat-3: #7fc47f;
+  --heat-4: #d5f3a6;
+  --heat-text-0: #7e9384;
+  --heat-text-1: #ddefd3;
+  --heat-text-2: #0e2013;
+  --heat-text-3: #0e2013;
+  --heat-text-4: #26350f;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.45);
@@ -110,12 +120,16 @@
     --danger-hover: #ef7e70;
     --danger-soft: #35201c;
     --ring: #57b06b;
-    --heat-0: #1a241d;
-    --heat-1: #234032;
-    --heat-2: #2f6144;
-    --heat-3: #3f8a58;
-    --heat-4: #52b06c;
-    --heat-5: #7fd394;
+    --heat-0: #1c2620;
+    --heat-1: #33512e;
+    --heat-2: #4d8a4f;
+    --heat-3: #7fc47f;
+    --heat-4: #d5f3a6;
+    --heat-text-0: #7e9384;
+    --heat-text-1: #ddefd3;
+    --heat-text-2: #0e2013;
+    --heat-text-3: #0e2013;
+    --heat-text-4: #26350f;
   }
 }
 
@@ -219,6 +233,15 @@ button:disabled {
 @keyframes hp-toast-in {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Tiny scale-in for checkmarks and selection indicators. */
+@keyframes hp-pop {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}
+.pop-in {
+  animation: hp-pop 0.16s ease-out both;
 }
 
 @media (prefers-reduced-motion: reduce) {

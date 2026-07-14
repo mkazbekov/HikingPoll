@@ -1,4 +1,4 @@
-export type TransportMode = "CAR" | "TRANSIT" | "NEEDS_RIDE";
+export type TransportMode = "CAR" | "TRANSIT" | "NEEDS_RIDE" | "OTHER";
 
 export interface EventSettings {
   id: number;
@@ -8,7 +8,7 @@ export interface EventSettings {
   dateEnd: string; // "YYYY-MM-DD"
   dayStartHour: number; // 0-23
   dayEndHour: number; // 1-24, exclusive end
-  slotMinutes: number; // e.g. 15
+  slotMinutes: number; // e.g. 30
 }
 
 export interface Destination {
@@ -25,12 +25,16 @@ export interface PickupPoint {
   name: string;
   description: string;
   sortOrder: number;
+  suggestedBy: string | null;
 }
 
 export interface Participant {
   id: number;
   name: string;
-  transportMode: TransportMode;
+  /** One or more ways this person can travel (e.g. TRANSIT + NEEDS_RIDE). */
+  transportModes: TransportMode[];
+  /** Free-text travel answer, set when transportModes includes "OTHER". */
+  transportOther: string | null;
   passengerSeats: number | null;
   destinationId: number | null;
   pickupPointId: number | null;
@@ -47,7 +51,8 @@ export interface PollData {
 
 export interface ResponseInput {
   name: string;
-  transportMode: TransportMode;
+  transportModes: TransportMode[];
+  transportOther: string | null;
   passengerSeats: number | null;
   destinationId: number | null;
   pickupPointId: number | null;

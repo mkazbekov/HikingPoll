@@ -35,7 +35,13 @@ export async function POST(req: NextRequest) {
   try {
     const participant = await upsertResponse({
       name: String(body.name),
-      transportMode: (body.transportMode as ResponseInput["transportMode"]) ?? "CAR",
+      transportModes: Array.isArray(body.transportModes)
+        ? (body.transportModes as ResponseInput["transportModes"])
+        : ["CAR"],
+      transportOther:
+        body.transportOther === null || body.transportOther === undefined
+          ? null
+          : String(body.transportOther),
       passengerSeats:
         body.passengerSeats === null || body.passengerSeats === undefined
           ? null

@@ -59,7 +59,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center font-medium transition-[background,color,box-shadow,filter] duration-150 disabled:opacity-50 focus-visible:outline-2",
+        "inline-flex items-center justify-center font-medium transition-[background,color,box-shadow,filter,transform] duration-150 active:scale-[0.98] disabled:opacity-50 focus-visible:outline-2",
         VARIANTS[variant],
         SIZES[size],
         className,
@@ -113,8 +113,8 @@ export function SectionHeading({
   right?: ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="flex items-start gap-3">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex min-w-52 flex-1 items-start gap-3">
         {icon && (
           <span className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-xl bg-[var(--primary-soft)] text-[var(--primary)]">
             {icon}

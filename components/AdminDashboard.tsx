@@ -31,7 +31,7 @@ import {
   cn,
 } from "./ui";
 import { MountainMark } from "./MountainMark";
-import { TRANSPORT_META } from "./ParticipantList";
+import { TRANSPORT_META, TRANSPORT_ORDER, sortModes } from "./ParticipantList";
 
 type Tab = "responses" | "destinations" | "pickups" | "event";
 type AdminData = PollData & { isAdmin: boolean };
@@ -231,8 +231,12 @@ function ResponsesPanel({ data, reload, toast }: { data: AdminData; reload: () =
               <div className="min-w-0">
                 <div className="font-medium text-[var(--fg)]">{p.name}</div>
                 <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--fg-muted)]">
-                  <span>{TRANSPORT_META[p.transportMode].short}</span>
-                  {p.transportMode === "CAR" && p.passengerSeats != null && (
+                  <span>
+                    {sortModes(p.transportModes)
+                      .map((m) => (m === "OTHER" && p.transportOther ? p.transportOther : TRANSPORT_META[m].short))
+                      .join(" + ")}
+                  </span>
+                  {p.transportModes.includes("CAR") && p.passengerSeats != null && (
                     <span>{p.passengerSeats} seats</span>
                   )}
                   <span className="tnum">{p.slots.length} slots</span>
@@ -280,11 +284,22 @@ function ParticipantEditor({
   toast: ToastFn;
 }) {
   const [name, setName] = useState(p.name);
-  const [mode, setMode] = useState<TransportMode>(p.transportMode);
+  const [modes, setModes] = useState<TransportMode[]>(p.transportModes);
+  const [other, setOther] = useState(p.transportOther ?? "");
   const [seats, setSeats] = useState(p.passengerSeats ?? 0);
   const [destId, setDestId] = useState<number | null>(p.destinationId);
   const [pickId, setPickId] = useState<number | null>(p.pickupPointId);
   const [saving, setSaving] = useState(false);
+
+  const toggleMode = (m: TransportMode) => {
+    setModes((prev) => {
+      if (prev.includes(m)) return prev.filter((x) => x !== m);
+      let next = [...prev, m];
+      if (m === "CAR") next = next.filter((x) => x !== "NEEDS_RIDE");
+      if (m === "NEEDS_RIDE") next = next.filter((x) => x !== "CAR");
+      return next;
+    });
+  };
 
   const save = async () => {
     setSaving(true);
@@ -294,8 +309,9 @@ function ParticipantEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name,
-          transportMode: mode,
-          passengerSeats: mode === "CAR" ? seats : null,
+          transportModes: modes,
+          transportOther: modes.includes("OTHER") ? other.trim() || null : null,
+          passengerSeats: modes.includes("CAR") ? seats : null,
           destinationId: destId,
           pickupPointId: pickId,
         }),
@@ -315,19 +331,43 @@ function ParticipantEditor({
       <Field label="Name" htmlFor={`n-${p.id}`}>
         <input id={`n-${p.id}`} className={inputClass} value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
+      <Field label="Transport (select all that apply)">
+        <div className="flex flex-wrap gap-2">
+          {TRANSPORT_ORDER.map((m) => {
+            const active = modes.includes(m);
+            return (
+              <button
+                key={m}
+                type="button"
+                role="checkbox"
+                aria-checked={active}
+                onClick={() => toggleMode(m)}
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                  active
+                    ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary)]"
+                    : "border-[var(--border)] bg-[var(--surface)] text-[var(--fg-muted)] hover:bg-[var(--surface-2)]",
+                )}
+              >
+                {TRANSPORT_META[m].short}
+              </button>
+            );
+          })}
+        </div>
+      </Field>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Transport">
-          <select
-            className={inputClass}
-            value={mode}
-            onChange={(e) => setMode(e.target.value as TransportMode)}
-          >
-            <option value="CAR">Driving (car)</option>
-            <option value="TRANSIT">Public transit</option>
-            <option value="NEEDS_RIDE">Needs a ride</option>
-          </select>
-        </Field>
-        {mode === "CAR" && (
+        {modes.includes("OTHER") && (
+          <Field label="Other transport" htmlFor={`o-${p.id}`}>
+            <input
+              id={`o-${p.id}`}
+              className={inputClass}
+              value={other}
+              onChange={(e) => setOther(e.target.value)}
+              maxLength={120}
+            />
+          </Field>
+        )}
+        {modes.includes("CAR") && (
           <Field label="Passenger seats">
             <input
               type="number"
