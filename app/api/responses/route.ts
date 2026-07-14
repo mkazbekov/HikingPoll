@@ -46,10 +46,9 @@ export async function POST(req: NextRequest) {
         body.passengerSeats === null || body.passengerSeats === undefined
           ? null
           : Number(body.passengerSeats),
-      destinationId:
-        body.destinationId === null || body.destinationId === undefined
-          ? null
-          : Number(body.destinationId),
+      destinationIds: Array.isArray(body.destinationIds)
+        ? body.destinationIds.map(Number)
+        : [],
       pickupPointId:
         body.pickupPointId === null || body.pickupPointId === undefined
           ? null

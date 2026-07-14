@@ -36,7 +36,8 @@ export interface Participant {
   /** Free-text travel answer, set when transportModes includes "OTHER". */
   transportOther: string | null;
   passengerSeats: number | null;
-  destinationId: number | null;
+  /** Destinations this person voted for (multi-select). */
+  destinationIds: number[];
   pickupPointId: number | null;
   /** slot keys "YYYY-MM-DDTHH:mm" */
   slots: string[];
@@ -54,7 +55,7 @@ export interface ResponseInput {
   transportModes: TransportMode[];
   transportOther: string | null;
   passengerSeats: number | null;
-  destinationId: number | null;
+  destinationIds: number[];
   pickupPointId: number | null;
   slots: string[];
 }

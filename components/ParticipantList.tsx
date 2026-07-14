@@ -89,8 +89,10 @@ export function ParticipantList({
   pickups: PickupPoint[];
   currentName: string | null;
 }) {
-  const destName = (id: number | null) =>
-    destinations.find((d) => d.id === id)?.name ?? null;
+  const destNames = (ids: number[]) =>
+    ids
+      .map((id) => destinations.find((d) => d.id === id)?.name)
+      .filter((n): n is string => !!n);
   const pickupName = (id: number | null) =>
     pickups.find((p) => p.id === id)?.name ?? null;
 
@@ -100,7 +102,7 @@ export function ParticipantList({
         const isYou =
           currentName != null &&
           p.name.toLowerCase() === currentName.trim().toLowerCase();
-        const dest = destName(p.destinationId);
+        const dests = destNames(p.destinationIds);
         const pickup = pickupName(p.pickupPointId);
         return (
           <li key={p.id} className="flex items-center justify-between gap-3 py-3">
@@ -123,10 +125,10 @@ export function ParticipantList({
                     </span>
                   );
                 })}
-                {dest && (
+                {dests.length > 0 && (
                   <span className="inline-flex items-center gap-1">
                     <MapPin className="size-3.5" />
-                    {dest}
+                    {dests.join(" or ")}
                   </span>
                 )}
                 {pickup && (

@@ -9,8 +9,8 @@ import { TRANSPORT_META, TRANSPORT_ORDER } from "./ParticipantList";
 interface Props {
   destinations: Destination[];
   pickups: PickupPoint[];
-  destinationId: number | null;
-  setDestinationId: (id: number | null) => void;
+  destinationIds: number[];
+  setDestinationIds: (ids: number[]) => void;
   pickupId: number | null;
   setPickupId: (id: number | null) => void;
   transportModes: TransportMode[];
@@ -33,8 +33,8 @@ const MODE_HINTS: Record<TransportMode, string> = {
 export function LogisticsForm({
   destinations,
   pickups,
-  destinationId,
-  setDestinationId,
+  destinationIds,
+  setDestinationIds,
   pickupId,
   setPickupId,
   transportModes,
@@ -58,6 +58,14 @@ export function LogisticsForm({
     setTransportModes(next);
   };
 
+  const toggleDestination = (id: number) => {
+    setDestinationIds(
+      destinationIds.includes(id)
+        ? destinationIds.filter((x) => x !== id)
+        : [...destinationIds, id],
+    );
+  };
+
   return (
     <div className="space-y-7">
       {/* Destination */}
@@ -65,17 +73,17 @@ export function LogisticsForm({
         <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-[var(--fg)]">
           <MapPin className="size-4 text-[var(--primary)]" /> Where should we hike?
         </h3>
-        <p className="mb-3 text-xs text-[var(--fg-subtle)]">Vote for one destination.</p>
+        <p className="mb-3 text-xs text-[var(--fg-subtle)]">Vote for every destination you&apos;d be happy with.</p>
         <div className="space-y-2">
           {destinations.map((d) => {
-            const active = destinationId === d.id;
+            const active = destinationIds.includes(d.id);
             return (
               <button
                 key={d.id}
                 type="button"
-                role="radio"
+                role="checkbox"
                 aria-checked={active}
-                onClick={() => setDestinationId(active ? null : d.id)}
+                onClick={() => toggleDestination(d.id)}
                 className={cn(
                   "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-colors duration-150",
                   active
@@ -85,11 +93,11 @@ export function LogisticsForm({
               >
                 <span
                   className={cn(
-                    "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
+                    "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors",
                     active ? "border-[var(--primary)] bg-[var(--primary)]" : "border-[var(--border-strong)]",
                   )}
                 >
-                  {active && <Check className="pop-in size-3 text-[var(--on-primary)]" />}
+                  {active && <Check className="pop-in size-3.5 text-[var(--on-primary)]" strokeWidth={3} />}
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-center gap-2">

@@ -75,9 +75,9 @@ export async function getEvent(): Promise<EventSettings> {
 export async function getDestinations(): Promise<Destination[]> {
   const rows = await query<Record<string, unknown>>(
     `SELECT d.id, d.name, d.description, d.is_suggested, d.suggested_by,
-            COUNT(p.id)::int AS vote_count
+            COUNT(v.participant_id)::int AS vote_count
      FROM destinations d
-     LEFT JOIN participants p ON p.destination_id = d.id
+     LEFT JOIN destination_votes v ON v.destination_id = d.id
      GROUP BY d.id
      ORDER BY d.is_suggested DESC, d.created_at ASC, d.id ASC`,
   );
@@ -108,7 +108,7 @@ export async function getPickups(): Promise<PickupPoint[]> {
 export async function getParticipants(): Promise<Participant[]> {
   const rows = await query<Record<string, unknown>>(
     `SELECT id, name, transport_mode, transport_modes, transport_other,
-            passenger_seats, destination_id, pickup_point_id
+            passenger_seats, pickup_point_id
      FROM participants ORDER BY created_at ASC, id ASC`,
   );
   const slotRows = await query<Record<string, unknown>>(
@@ -120,13 +120,22 @@ export async function getParticipants(): Promise<Participant[]> {
     if (!slotsByParticipant.has(pid)) slotsByParticipant.set(pid, []);
     slotsByParticipant.get(pid)!.push(String(s.slot_start));
   }
+  const voteRows = await query<Record<string, unknown>>(
+    `SELECT participant_id, destination_id FROM destination_votes ORDER BY destination_id ASC`,
+  );
+  const votesByParticipant = new Map<number, number[]>();
+  for (const v of voteRows) {
+    const pid = Number(v.participant_id);
+    if (!votesByParticipant.has(pid)) votesByParticipant.set(pid, []);
+    votesByParticipant.get(pid)!.push(Number(v.destination_id));
+  }
   return rows.map((r) => ({
     id: Number(r.id),
     name: String(r.name),
     transportModes: parseModes(r.transport_modes, r.transport_mode),
     transportOther: r.transport_other ? String(r.transport_other) : null,
     passengerSeats: r.passenger_seats === null ? null : Number(r.passenger_seats),
-    destinationId: r.destination_id === null ? null : Number(r.destination_id),
+    destinationIds: votesByParticipant.get(Number(r.id)) ?? [],
     pickupPointId: r.pickup_point_id === null ? null : Number(r.pickup_point_id),
     slots: slotsByParticipant.get(Number(r.id)) ?? [],
   }));
@@ -148,7 +157,7 @@ export async function getParticipantByName(
   const key = nameKey(name);
   const row = await queryOne<Record<string, unknown>>(
     `SELECT id, name, transport_mode, transport_modes, transport_other,
-            passenger_seats, destination_id, pickup_point_id
+            passenger_seats, pickup_point_id
      FROM participants WHERE name_key = $1`,
     [key],
   );
@@ -158,13 +167,17 @@ export async function getParticipantByName(
     `SELECT slot_start FROM availability_slots WHERE participant_id = $1 ORDER BY slot_start ASC`,
     [id],
   );
+  const voteRows = await query<Record<string, unknown>>(
+    `SELECT destination_id FROM destination_votes WHERE participant_id = $1 ORDER BY destination_id ASC`,
+    [id],
+  );
   return {
     id,
     name: String(row.name),
     transportModes: parseModes(row.transport_modes, row.transport_mode),
     transportOther: row.transport_other ? String(row.transport_other) : null,
     passengerSeats: row.passenger_seats === null ? null : Number(row.passenger_seats),
-    destinationId: row.destination_id === null ? null : Number(row.destination_id),
+    destinationIds: voteRows.map((v) => Number(v.destination_id)),
     pickupPointId: row.pickup_point_id === null ? null : Number(row.pickup_point_id),
     slots: slotRows.map((s) => String(s.slot_start)),
   };
@@ -186,6 +199,8 @@ export async function upsertResponse(input: ResponseInput): Promise<Participant>
       : null;
   const modesJson = JSON.stringify(modes);
   const legacyMode = modes[0]; // keep the old single-value column coherent
+  const destinationIds = cleanDestinationIds(input.destinationIds);
+  const legacyDest = destinationIds[0] ?? null; // mirror of the first vote
 
   const existing = await queryOne<{ id: number }>(
     `SELECT id FROM participants WHERE name_key = $1`,
@@ -200,7 +215,7 @@ export async function upsertResponse(input: ResponseInput): Promise<Participant>
        SET name = $1, transport_mode = $2, transport_modes = $3, transport_other = $4,
            passenger_seats = $5, destination_id = $6, pickup_point_id = $7, updated_at = now()
        WHERE id = $8`,
-      [name, legacyMode, modesJson, other, seats, input.destinationId, input.pickupPointId, participantId],
+      [name, legacyMode, modesJson, other, seats, legacyDest, input.pickupPointId, participantId],
     );
     await query(`DELETE FROM availability_slots WHERE participant_id = $1`, [
       participantId,
@@ -211,10 +226,12 @@ export async function upsertResponse(input: ResponseInput): Promise<Participant>
          (name, name_key, transport_mode, transport_modes, transport_other,
           passenger_seats, destination_id, pickup_point_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [name, key, legacyMode, modesJson, other, seats, input.destinationId, input.pickupPointId],
+      [name, key, legacyMode, modesJson, other, seats, legacyDest, input.pickupPointId],
     );
     participantId = Number(inserted!.id);
   }
+
+  await writeDestinationVotes(participantId, destinationIds);
 
   // Insert the (validated, de-duplicated) slots. Minutes must land on the
   // event's slot boundaries (e.g. :00/:30 for 30-minute slots).
@@ -270,6 +287,30 @@ export async function suggestDestination(
   return found;
 }
 
+/** Sanitize a client-supplied destination vote list: numeric, unique. */
+function cleanDestinationIds(input: unknown): number[] {
+  const arr = Array.isArray(input) ? input : [];
+  return Array.from(
+    new Set(arr.map(Number).filter((n) => Number.isInteger(n) && n > 0)),
+  );
+}
+
+/** Replace a participant's destination votes. Unknown destination ids are skipped. */
+async function writeDestinationVotes(
+  participantId: number,
+  destinationIds: number[],
+): Promise<void> {
+  await query(`DELETE FROM destination_votes WHERE participant_id = $1`, [participantId]);
+  for (const destId of destinationIds) {
+    await query(
+      `INSERT INTO destination_votes (participant_id, destination_id)
+       SELECT $1, id FROM destinations WHERE id = $2
+       ON CONFLICT (participant_id, destination_id) DO NOTHING`,
+      [participantId, destId],
+    );
+  }
+}
+
 /** A participant proposes a new pickup / meeting point everyone can then select. */
 export async function suggestPickup(
   name: string,
@@ -315,7 +356,7 @@ export async function deleteParticipant(id: number): Promise<void> {
 
 export async function updateParticipantMeta(
   id: number,
-  fields: Partial<Pick<Participant, "name" | "transportModes" | "transportOther" | "passengerSeats" | "destinationId" | "pickupPointId">>,
+  fields: Partial<Pick<Participant, "name" | "transportModes" | "transportOther" | "passengerSeats" | "destinationIds" | "pickupPointId">>,
 ): Promise<void> {
   const sets: string[] = [];
   const params: unknown[] = [];
@@ -338,18 +379,22 @@ export async function updateParticipantMeta(
     sets.push(`passenger_seats = $${i++}`);
     params.push(fields.passengerSeats);
   }
-  if (fields.destinationId !== undefined) {
+  let votes: number[] | null = null;
+  if (fields.destinationIds !== undefined) {
+    votes = cleanDestinationIds(fields.destinationIds);
     sets.push(`destination_id = $${i++}`);
-    params.push(fields.destinationId);
+    params.push(votes[0] ?? null);
   }
   if (fields.pickupPointId !== undefined) {
     sets.push(`pickup_point_id = $${i++}`);
     params.push(fields.pickupPointId);
   }
-  if (!sets.length) return;
-  sets.push(`updated_at = now()`);
-  params.push(id);
-  await query(`UPDATE participants SET ${sets.join(", ")} WHERE id = $${i}`, params);
+  if (sets.length) {
+    sets.push(`updated_at = now()`);
+    params.push(id);
+    await query(`UPDATE participants SET ${sets.join(", ")} WHERE id = $${i}`, params);
+  }
+  if (votes !== null) await writeDestinationVotes(id, votes);
 }
 
 export async function createDestination(

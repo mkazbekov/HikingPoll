@@ -240,7 +240,12 @@ function ResponsesPanel({ data, reload, toast }: { data: AdminData; reload: () =
                     <span>{p.passengerSeats} seats</span>
                   )}
                   <span className="tnum">{p.slots.length} slots</span>
-                  <span>{data.destinations.find((d) => d.id === p.destinationId)?.name ?? "No destination"}</span>
+                  <span>
+                    {p.destinationIds
+                      .map((id) => data.destinations.find((d) => d.id === id)?.name)
+                      .filter(Boolean)
+                      .join(", ") || "No destination"}
+                  </span>
                 </div>
               </div>
               <div className="flex shrink-0 gap-2">
@@ -287,7 +292,7 @@ function ParticipantEditor({
   const [modes, setModes] = useState<TransportMode[]>(p.transportModes);
   const [other, setOther] = useState(p.transportOther ?? "");
   const [seats, setSeats] = useState(p.passengerSeats ?? 0);
-  const [destId, setDestId] = useState<number | null>(p.destinationId);
+  const [destIds, setDestIds] = useState<number[]>(p.destinationIds);
   const [pickId, setPickId] = useState<number | null>(p.pickupPointId);
   const [saving, setSaving] = useState(false);
 
@@ -312,7 +317,7 @@ function ParticipantEditor({
           transportModes: modes,
           transportOther: modes.includes("OTHER") ? other.trim() || null : null,
           passengerSeats: modes.includes("CAR") ? seats : null,
-          destinationId: destId,
+          destinationIds: destIds,
           pickupPointId: pickId,
         }),
       });
@@ -381,19 +386,33 @@ function ParticipantEditor({
         )}
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Destination vote">
-          <select
-            className={inputClass}
-            value={destId ?? ""}
-            onChange={(e) => setDestId(e.target.value ? Number(e.target.value) : null)}
-          >
-            <option value="">— none —</option>
-            {destinations.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+        <Field label="Destination votes (select all that apply)">
+          <div className="flex flex-wrap gap-2">
+            {destinations.map((d) => {
+              const active = destIds.includes(d.id);
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={active}
+                  onClick={() =>
+                    setDestIds((prev) =>
+                      prev.includes(d.id) ? prev.filter((x) => x !== d.id) : [...prev, d.id],
+                    )
+                  }
+                  className={cn(
+                    "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                    active
+                      ? "border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary)]"
+                      : "border-[var(--border)] bg-[var(--surface)] text-[var(--fg-muted)] hover:bg-[var(--surface-2)]",
+                  )}
+                >
+                  {d.name}
+                </button>
+              );
+            })}
+          </div>
         </Field>
         <Field label="Pickup point">
           <select

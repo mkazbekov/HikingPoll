@@ -135,6 +135,12 @@ CREATE TABLE IF NOT EXISTS availability_slots (
 
 CREATE INDEX IF NOT EXISTS idx_slots_participant ON availability_slots(participant_id);
 CREATE INDEX IF NOT EXISTS idx_slots_start ON availability_slots(slot_start);
+
+CREATE TABLE IF NOT EXISTS destination_votes (
+  participant_id INTEGER NOT NULL REFERENCES participants(id) ON DELETE CASCADE,
+  destination_id INTEGER NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+  UNIQUE (participant_id, destination_id)
+);
 `;
 
 // Idempotent upgrades for databases created by earlier versions of the app:
@@ -142,7 +148,10 @@ CREATE INDEX IF NOT EXISTS idx_slots_start ON availability_slots(slot_start);
 //   • pickup_points gain suggested_by so participants can propose meeting points.
 //   • slots move from 15-minute to 30-minute granularity: :15/:45 snap down to
 //     :00/:30 (dropping ones that would collide with an existing slot).
+//   • destination votes become multi-select: participants.destination_id (kept
+//     as a mirror of the first vote) is backfilled into destination_votes.
 const MIGRATIONS = `
+INSERT INTO destination_votes (participant_id, destination_id) SELECT id, destination_id FROM participants WHERE destination_id IS NOT NULL ON CONFLICT (participant_id, destination_id) DO NOTHING;
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS transport_modes TEXT;
 ALTER TABLE participants ADD COLUMN IF NOT EXISTS transport_other TEXT;
 ALTER TABLE pickup_points ADD COLUMN IF NOT EXISTS suggested_by TEXT;

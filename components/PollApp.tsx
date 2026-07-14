@@ -69,7 +69,7 @@ function PollAppInner() {
   const [transportModes, setTransportModes] = useState<TransportMode[]>(["CAR"]);
   const [transportOther, setTransportOther] = useState("");
   const [seats, setSeats] = useState(3);
-  const [destinationId, setDestinationId] = useState<number | null>(null);
+  const [destinationIds, setDestinationIds] = useState<number[]>([]);
   const [pickupId, setPickupId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -88,9 +88,11 @@ function PollAppInner() {
   useEffect(() => {
     loadData()
       .then((json) => {
-        // Default destination = the organizer-suggested one.
+        // Default vote = the organizer-suggested destination.
         const suggested = json.destinations.find((d) => d.isSuggested);
-        setDestinationId((prev) => prev ?? suggested?.id ?? null);
+        setDestinationIds((prev) =>
+          prev.length ? prev : suggested ? [suggested.id] : [],
+        );
         const savedName = (() => {
           try {
             return localStorage.getItem("hp-name");
@@ -152,7 +154,7 @@ function PollAppInner() {
       setSeats(3);
       setPickupId(null);
       const suggested = poll?.destinations.find((d) => d.isSuggested);
-      setDestinationId(suggested?.id ?? null);
+      setDestinationIds(suggested ? [suggested.id] : []);
     },
     [],
   );
@@ -178,7 +180,7 @@ function PollAppInner() {
           setTransportModes(p.transportModes.length ? p.transportModes : ["CAR"]);
           setTransportOther(p.transportOther ?? "");
           setSeats(p.passengerSeats ?? 3);
-          setDestinationId(p.destinationId);
+          setDestinationIds(p.destinationIds);
           setPickupId(p.pickupPointId);
           setEditingExisting(true);
           toast("info", "Welcome back! We loaded your previous answers so you can update them.");
@@ -219,7 +221,7 @@ function PollAppInner() {
           transportModes,
           transportOther: transportModes.includes("OTHER") ? transportOther.trim() || null : null,
           passengerSeats: transportModes.includes("CAR") ? seats : null,
-          destinationId,
+          destinationIds,
           pickupPointId: pickupId,
           slots: Array.from(selected),
         }),
@@ -251,8 +253,13 @@ function PollAppInner() {
     }
     const json = await res.json();
     await loadData();
-    if (json.destination?.id) setDestinationId(json.destination.id);
-    toast("success", "Destination added and selected as your vote.");
+    // Add the new spot to this person's votes without dropping existing ones.
+    if (json.destination?.id) {
+      setDestinationIds((prev) =>
+        prev.includes(json.destination.id) ? prev : [...prev, json.destination.id],
+      );
+    }
+    toast("success", "Destination added to your votes.");
   };
 
   const suggestPickup = async (name: string, description: string) => {
@@ -455,8 +462,8 @@ function PollAppInner() {
               <LogisticsForm
                 destinations={data.destinations}
                 pickups={data.pickups}
-                destinationId={destinationId}
-                setDestinationId={setDestinationId}
+                destinationIds={destinationIds}
+                setDestinationIds={setDestinationIds}
                 pickupId={pickupId}
                 setPickupId={setPickupId}
                 transportModes={transportModes}
