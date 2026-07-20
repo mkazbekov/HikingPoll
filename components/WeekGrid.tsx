@@ -68,9 +68,14 @@ export function WeekGrid({
     const onUp = () => endDrag();
     window.addEventListener("pointerup", onUp);
     window.addEventListener("pointercancel", onUp);
+    // Losing window focus mid-drag (alt-tab, switching apps) means we may never
+    // see a matching pointerup at all — end the drag defensively so it can't
+    // stay stuck "on" for whatever the pointer brushes past afterward.
+    window.addEventListener("blur", onUp);
     return () => {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
+      window.removeEventListener("blur", onUp);
     };
   }, [endDrag, disabled]);
 
@@ -79,6 +84,13 @@ export function WeekGrid({
     e.preventDefault();
     draggingRef.current = true;
     modeRef.current = workingRef.current.has(key) ? "erase" : "add";
+    // Capture the pointer so we're guaranteed a matching pointerup/pointercancel
+    // even if the button is released outside this element (or outside the
+    // browser window entirely) — without this, a drag that ends off-target can
+    // get stuck "on", silently painting whatever the pointer passes over next
+    // (e.g. the same weekday column in every later week) until some other
+    // pointerup happens to bubble through.
+    e.currentTarget.setPointerCapture(e.pointerId);
     applyTo(key);
   };
 
